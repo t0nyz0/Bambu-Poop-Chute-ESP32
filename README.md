@@ -22,9 +22,8 @@ The Bambu Conveyor is an application designed to manage the waste output of a [B
 # Conveyor Makerworld files
 
 - **Conveyor:** https://makerworld.com/en/models/148083#profileId-161573
-- **The custom box I used:** https://makerworld.com/en/models/576315#profileId-496900
+- **ESP32 Housing:** https://makerworld.com/en/models/1071359#profileId-1061316
 - **Conveyor Extension:** https://makerworld.com/en/models/249714#profileId-359905
-- **Another Motor box housing:** (Alternative option without LEDS but better motor mount): https://makerworld.com/en/models/164413#profileId-180494
 
 
 
