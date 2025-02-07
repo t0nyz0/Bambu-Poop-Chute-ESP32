@@ -5,7 +5,7 @@
 
 ## Overview 
 
-The Bambu Conveyor is an application designed to manage the waste output of a [Bambu Labs X1 3D printer](https://bambulab.com/en/x1). It utilizes the MQTT protocol to monitor the printer's status and control a motor that moves waste material away from the printing area. 
+The Bambu Conveyor is an application designed to manage the waste output of a [Bambu Labs printer](https://bambulab.com/en/x1). It utilizes the MQTT protocol to monitor the printer's status and control a motor that moves waste material away from the printing area. Supports X1, currently testing A1 and P1 compatibility. See settings menu.
 
 
 ## List of some supplies
@@ -26,7 +26,6 @@ The Bambu Conveyor is an application designed to manage the waste output of a [B
 - **Conveyor Extension:** https://makerworld.com/en/models/249714#profileId-359905
 
 
-
 ## Features
 
 - **WiFi and MQTT Connectivity:** Connects to a local WiFi network and communicates with the printer via MQTT
@@ -34,76 +33,39 @@ The Bambu Conveyor is an application designed to manage the waste output of a [B
 - **Web Server:** Hosts a web server to provide manual control and configuration of the system
 - **Stage Monitoring:** Monitors various stages of the printer to determine when to activate the motor
 
-## Setup
+# Bambu Poop Conveyor - Setup & Installation Guide  
 
-### WiFi and MQTT Configuration
+## Setup  
 
-Enter your WiFi and MQTT credentials in the following variables:
+## Flashing the ESP32
 
-```cpp
-// WiFi credentials
-char ssid[40] = "your-ssid";
-char password[40] = "your-password";
+To install the firmware, use an ESP32 flashing tool.
 
-// MQTT credentials
-char mqtt_server[40] = "your-bambu-printer-ip";
-char mqtt_password[30] = "your-bambu-printer-accesscode";
-char serial_number[20] = "your-bambu-printer-serial-number";
+1. Download the latest `.bin` release from [GitHub Releases](#).
+2. Connect your ESP32 to your computer via USB.
+3. Use `ESP-Flasher` or `esptool.py` to flash the firmware.
 
-```
-### Note:
-- **ssid** is your WIFI name
-- **password** is the WIFI password
-- **mqtt_server** is your Bambu Printers IP address
-- **mqtt_password** is your Bambu printer access code as found on your printer
-- **serial_number** is your Bambu printer serial number as found on your printer
-
-## GPIO Pins
-
-The application uses the following GPIO pins for motor and LED control:
-
-```cpp
-const int greenLight = 19;
-const int yellowLight = 18;
-const int redLight = 4;
-
-int motor1Pin1 = 23;
-int motor1Pin2 = 21;
-int enable1Pin = 15;
-
+ **Note:** The port (`/dev/cu.usbserial-0001`) in the command below may be different on your system.  
+ Use `ls /dev/cu.*` on macOS or `COMx` on Windows to find the correct port.
+   
+```cp
+esptool.py --chip esp32 --port /dev/cu.usbserial-0001 --baud 115200 write_flash 0x1000 Bambu-Poop-Conveyor-v1.3.0.bin
 ```
 
-### Motor Control Timings
-
-Configure the motor run time and wait time:
-
-```cpp
-int motorRunTime = 10000; // 10 seconds by default / I prefer 5000 as the poop doesnt come out fast enough for you to need anymore than that, but 10 seconds is just more exciting
-int motorWaitTime = 5000; // The time to wait to run the motor. / We dont want the conveyor to run right when the status is detected, 5 seconds is just right in my case
-int delayAfterRun = 120000; // Delay after motor run / We dont want it to run again anytime soon
-
-```
-
-### PWM Configuration
-
-Set the PWM properties for motor control:
-
-```cpp
-const int freq = 5000;
-const int pwmChannel = 0;
-const int resolution = 8;
-int dutyCycle = 220; // Motors power level (255 for full power) / I run just under that for no reason other than my own preference 
-
-```
+5. Wait for the flashing process to complete.
+6. Restart the ESP32.
 
 
-## Installation
+## Configuring via Web Interface
 
-1. Connect the ESP32 to your computer.
-2. Open the code in the Arduino IDE.
-3. Enter your WiFi and MQTT credentials in the respective variables.
-4. Upload the code to the ESP32.
-5. Access the web server via the IP address assigned to the ESP32 to configure and control the application.
+Once flashed, the ESP32 starts in AP Mode:
+
+1. Connect to the **"BambuConveyor"** WiFi network.
+2. Open a browser and go to **[192.168.4.1/config](http://192.168.4.1/config)**.
+3. Enter your WiFi and MQTT credentials.
+4. Click **Save**. The ESP32 will reboot and connect to your WiFi.
+
+For troubleshooting, open an issue on GitHub or check the discussions tab.
 
 
 ## Usage
