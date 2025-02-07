@@ -1,7 +1,8 @@
 #include <Arduino.h>
 // Bambu Poop Conveyor
 // 8/6/24 - TZ
-char version[10] = "1.2.8";
+// Last updated: 2/7/25
+char version[10] = "1.3.0";
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -9,6 +10,7 @@ char version[10] = "1.2.8";
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <DNSServer.h>
 #include <time.h> 
 
 //---- SETTINGS YOU SHOULD ENTER --------------------------------------------------------------------------------------------------------------------------
@@ -20,7 +22,10 @@ char password[40] = "your-wifi-password";
 // MQTT credentials
 char mqtt_server[40] = "your-bambu-printer-ip";
 char mqtt_password[30] = "your-bambu-printer-accesscode";
-char serial_number[20] = "your-bambu-printer-serial-number";
+char serial_number[35] = "your-bambu-printer-serial-number";
+// Printer model selection (X1, P1, A1)
+char printer_model[5] = "X1";  // Default to X1
+
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -69,6 +74,8 @@ bool autoPushAllEnabled = true;
 bool pushAllCommandSent = false;
 bool wifiConnected = false;
 bool mqttConnected = false;
+bool isAPMode = false;
+
 
 unsigned long lastAttemptTime = 0;
 const unsigned long RECONNECT_INTERVAL = 15000;  // 15 seconds
@@ -85,6 +92,8 @@ unsigned int yellowLightState = 0;
 bool motorRunning = false;
 bool motorWaiting = false;
 bool delayAfterRunning = false;
+
+DNSServer dnsServer;
 
 #define MAX_LOG_ENTRIES 100
 
@@ -221,7 +230,6 @@ void handleManualRun() {
     addLogEntry("Motor activated from RUN url");
 }
 
-// Function to handle the config page
 void handleConfig() {
     if (server.method() == HTTP_GET) {
         String html = "<!DOCTYPE html><html><head><title>Bambu Poop Conveyor</title>";
@@ -235,7 +243,8 @@ void handleConfig() {
         html += ".info input { width: calc(100% - 20px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; }";
         html += "form { margin-top: 20px; }";
         html += "input[type=submit] { padding: 10px 20px; border: none; border-radius: 5px; background-color: #28a745; color: white; cursor: pointer; }";
-        html += "input[type=submit]:hover { background-color: #218838; }";
+        html += "input[type=submit]:hover { background-color: ##218838; }";
+        html += ".links a:hover { background-color: ##0056b3; }";
         html += ".links { margin-top: 20px; }";
         html += ".links a { display: inline-block; margin: 0 10px; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; }";
         html += ".links a:hover { background-color: #0056b3; }";
@@ -245,15 +254,22 @@ void handleConfig() {
         html += "<div class=\"container\">";
         html += "<h2>Bambu Poop Conveyor v" + String(version) + "</h2>";
         html += "<form action=\"/config\" method=\"POST\" class=\"info\">";
-        html += "<label for=\"ssid\">Wifi SSID:</label><input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>";
-        html += "<label for=\"password\">Wifi Password:</label><input type=\"text\" id=\"password\" name=\"password\" value=\"" + String(password) + "\"><br>";
+        html += "<label for=\"ssid\">WiFi SSID:</label><input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>";
+        html += "<label for=\"password\">WiFi Password:</label><input type=\"password\" id=\"password\" name=\"password\" value=\"" + String(password) + "\"><br>";
         html += "<label for=\"mqtt_server\">Bambu Printer IP Address:</label><input type=\"text\" id=\"mqtt_server\" name=\"mqtt_server\" value=\"" + String(mqtt_server) + "\"><br>";
         html += "<label for=\"mqtt_password\">Bambu Printer Access Code:</label><input type=\"text\" id=\"mqtt_password\" name=\"mqtt_password\" value=\"" + String(mqtt_password) + "\"><br>";
         html += "<label for=\"serial_number\">Bambu Printer Serial Number:</label><input type=\"text\" id=\"serial_number\" name=\"serial_number\" value=\"" + String(serial_number) + "\"><br>";
-        html += "<label for=\"motorRunTime\">Motor Run Time (ms) <p><sub>How long the motor runs:</sub></p></label><input type=\"number\" id=\"motorRunTime\" name=\"motorRunTime\" value=\"" + String(motorRunTime) + "\"><br>";
-        html += "<label for=\"motorWaitTime\">Motor Wait Time (ms) <p><sub>How long does the motor wait to run after detected poop state, set lower to run sooner, set higher if running before it poops:</sub></p></label><input type=\"number\" id=\"motorWaitTime\" name=\"motorWaitTime\" value=\"" + String(motorWaitTime) + "\"><br>";
-        html += "<label for=\"delayAfterRun\">Delay After Run (ms) <p><sub>How long to wait after a run, set higher to avoid duplicate detection:</sub></p></label><input type=\"number\" id=\"delayAfterRun\" name=\"delayAfterRun\" value=\"" + String(delayAfterRun) + "\"><br>";
-        html += "<label for=\"debug\">Serial Monitor Debug:</label><input type=\"checkbox\" id=\"debug\" name=\"debug\" " + String(debug ? "checked" : "") + "><br>";
+        html += "<label for=\"motorRunTime\">Motor Run Time (ms):</label><input type=\"number\" id=\"motorRunTime\" name=\"motorRunTime\" value=\"" + String(motorRunTime) + "\"><br>";
+        html += "<label for=\"motorWaitTime\">Motor Wait Time (ms):</label><input type=\"number\" id=\"motorWaitTime\" name=\"motorWaitTime\" value=\"" + String(motorWaitTime) + "\"><br>";
+        html += "<label for=\"delayAfterRun\">Delay After Run (ms):</label><input type=\"number\" id=\"delayAfterRun\" name=\"delayAfterRun\" value=\"" + String(delayAfterRun) + "\"><br>";
+        html += "<label for=\"printer_model\">Printer Model:</label>";
+        html += "<select id=\"printer_model\" name=\"printer_model\">";
+        html += "<option value=\"X1\"" + String((String(printer_model) == "X1") ? " selected" : "") + ">X1</option>";
+        html += "<option value=\"P1\"" + String((String(printer_model) == "P1") ? " selected" : "") + ">P1</option>";
+        html += "<option value=\"A1\"" + String((String(printer_model) == "A1") ? " selected" : "") + ">A1</option>";
+        html += "</select><br>";
+        html += "<label for=\"debug\">Serial Monitor Debug:</label>";
+        html += "<input type=\"checkbox\" id=\"debug\" name=\"debug\" " + String(debug ? "checked" : "") + "><br>";
         html += "<input type=\"submit\" value=\"Save\">";
         html += "</form>";
         html += "<div class=\"links\">";
@@ -262,17 +278,24 @@ void handleConfig() {
         html += "</div></div></body></html>";
 
         server.send(200, "text/html", html);
-    } else if (server.method() == HTTP_POST) {
+    } 
+    else if (server.method() == HTTP_POST) {
+        preferences.begin("my-config", false);
+
+        // Retrieve and store the entered values
         strcpy(ssid, server.arg("ssid").c_str());
         strcpy(password, server.arg("password").c_str());
         strcpy(mqtt_server, server.arg("mqtt_server").c_str());
         strcpy(mqtt_password, server.arg("mqtt_password").c_str());
         strcpy(serial_number, server.arg("serial_number").c_str());
+        strcpy(printer_model, server.arg("printer_model").c_str());
+
         motorRunTime = server.arg("motorRunTime").toInt();
         motorWaitTime = server.arg("motorWaitTime").toInt();
         delayAfterRun = server.arg("delayAfterRun").toInt();
         debug = server.hasArg("debug");
 
+        // Store in Preferences for persistence
         preferences.putString("ssid", ssid);
         preferences.putString("password", password);
         preferences.putString("mqtt_server", mqtt_server);
@@ -281,14 +304,18 @@ void handleConfig() {
         preferences.putInt("motorRunTime", motorRunTime);
         preferences.putInt("motorWaitTime", motorWaitTime);
         preferences.putInt("delayAfterRun", delayAfterRun);
+        preferences.putString("printer_model", printer_model);
         preferences.putBool("debug", debug);
 
-        server.send(200, "text/html", "<h1>Settings saved. Device rebooting.</h1><br><a href=\"/config\">Click here to return to config page</a>");
+        preferences.end();  
+
+        server.send(200, "text/html", "<h1>Settings saved! Rebooting...</h1><br><a href=\"/config\">Click here to return to config page</a>");
 
         delay(1000);
         ESP.restart();
     }
 }
+
 
 
 String formatDateTime(time_t timestamp) {
@@ -480,7 +507,6 @@ void sendPushAllCommand() {
     }
 }
 
-// Setup function
 void setup() {
     // Initialize GPIO pins
     pinMode(motor1Pin1, OUTPUT);
@@ -490,7 +516,7 @@ void setup() {
     pinMode(redLight, OUTPUT);
     pinMode(greenLight, OUTPUT);
 
-    // Start the Serial communication
+    // Start Serial communication
     Serial.begin(115200);
     client.setBufferSize(20000);
 
@@ -498,63 +524,57 @@ void setup() {
     ledcAttachChannel(enable1Pin, freq, resolution, pwmChannel);
     ledcWrite(enable1Pin, dutyCycle);
 
-    // Start Preferences
+    // Start Preferences storage
     preferences.begin("my-config", false);
 
-    // Load stored preferences, use default values if not set
-    preferences.getString("ssid", ssid, sizeof(ssid));
-    preferences.getString("password", password, sizeof(password));
-    preferences.getString("mqtt_server", mqtt_server, sizeof(mqtt_server));
-    preferences.getString("mqtt_password", mqtt_password, sizeof(mqtt_password));
-    preferences.getString("serial_number", serial_number, sizeof(serial_number));
-    delayAfterRun = preferences.getInt("delayAfterRun", delayAfterRun);
-    motorRunTime = preferences.getInt("motorRunTime", motorRunTime);
-    motorWaitTime = preferences.getInt("motorWaitTime", motorWaitTime);
-    debug = preferences.getBool("debug", debug);
+    // Load all stored values from Preferences
+    String storedSSID = preferences.getString("ssid", "");
+    String storedPassword = preferences.getString("password", "");
+    String storedMqttServer = preferences.getString("mqtt_server", "");
+    String storedMqttPassword = preferences.getString("mqtt_password", "");
+    String storedSerialNumber = preferences.getString("serial_number", "");
+    String storedPrinterModel = preferences.getString("printer_model", "X1");  // Default "X1" if missing
+    debug = preferences.getBool("debug", false); 
 
-    // Connect to WiFi
-    WiFi.begin(ssid, password);
-    if (debug) Serial.print("Connecting to WiFi ..");
-    while (WiFi.status() != WL_CONNECTED) {
-        digitalWrite(greenLight, LOW);
-        digitalWrite(yellowLight, HIGH);
-        delay(1000);
-        digitalWrite(yellowLight, LOW);
-        if (debug) Serial.print('.');
-    }
+    storedSSID.toCharArray(ssid, sizeof(ssid));
+    storedPassword.toCharArray(password, sizeof(password));
+    storedMqttServer.toCharArray(mqtt_server, sizeof(mqtt_server));
+    storedMqttPassword.toCharArray(mqtt_password, sizeof(mqtt_password));
+    storedSerialNumber.toCharArray(serial_number, sizeof(serial_number));
+    storedPrinterModel.toCharArray(printer_model, sizeof(printer_model));
+    motorRunTime = preferences.getInt("motorRunTime", 10000);
+    motorWaitTime = preferences.getInt("motorWaitTime", 5000);
+    delayAfterRun = preferences.getInt("delayAfterRun", 120000);
 
-    digitalWrite(greenLight, HIGH);
+    // Close Preferences after reading all values
+    preferences.end();
 
-    if (debug) {
-        Serial.println();
-        Serial.print("Connected to WiFi. IP address: ");
-        Serial.println(WiFi.localIP());
-        addLogEntry("Connected to Wifi");
+
+    // Decide if we should connect to WiFi or enter AP mode
+    if (strlen(ssid) > 0 && strlen(password) > 0) {
+        connectToWiFi();
+    } else {
+        startWiFiAPMode();
     }
 
     // Synchronize time with NTP server
     setupTime();
-    
-    // Add a delay to ensure time synchronization
     delay(2000);
 
-    client.setServer(mqtt_server, 8883); // Assuming default MQTT port 8883
-    espClient.setInsecure();
-    client.setCallback(mqttCallback);
-    sprintf(mqtt_topic, "device/%s/report", serial_number);
+    // Set up MQTT if WiFi is connected
+    if (WiFi.status() == WL_CONNECTED) {
+        client.setServer(mqtt_server, 8883); // Default MQTT port
+        espClient.setInsecure();
+        client.setCallback(mqttCallback);
+        sprintf(mqtt_topic, "device/%s/report", serial_number);
+        connectToMqtt(); 
+    }
 
-    // Define the root URL
+    // Set up Web Server routes
     server.on("/", handleConfig);
-
-    // Define control page
     server.on("/control", handleControl);
-
-    // Define the config URL
     server.on("/config", handleConfig);
-
-    // Define the logs URL
     server.on("/logs", handleLogs);
-
     server.on("/run", handleManualRun);
 
     // Initialize logs
@@ -562,79 +582,95 @@ void setup() {
         logs[i].timestamp = 0;
     }
 
-    // Start the server
+    // Start Web Server
     server.begin();
     if (debug) Serial.println("Web server started.");
 
-    sendPushAllCommand();
+    if (client.connected() && strcmp(printer_model, "X1") == 0) {
+        sendPushAllCommand();
+    }
 }
+
+void handleRoot() {
+    server.sendHeader("Location", "/config", true);
+    server.send(302, "text/plain", "Redirecting...");
+}
+
+void startWiFiAPMode() {
+    Serial.println("Starting WiFi AP Mode...");
+
+    isAPMode = true;  
+
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("BambuConveyor", "12345678");  // Open WiFi AP with password
+
+    dnsServer.start(53, "*", WiFi.softAPIP()); // Captive portal redirection
+    server.onNotFound(handleRoot);  // Redirect users to /config
+
+    Serial.print("Access Point IP: ");
+    Serial.println(WiFi.softAPIP());
+
+    // Flash yellow light to indicate setup mode
+    digitalWrite(yellowLight, HIGH);
+}
+
+void connectToWiFi() {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+
+    unsigned long startAttemptTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 15000) {  // Try for 15 sec
+        digitalWrite(yellowLight, HIGH);
+        delay(500);
+        digitalWrite(yellowLight, LOW);
+        delay(500);
+        if (debug) Serial.print('.');
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        isAPMode = false;  // Ensure AP mode is OFF when connected
+        digitalWrite(greenLight, HIGH);
+        Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
+        addLogEntry("Connected to WiFi: " + WiFi.localIP().toString());
+    } else {
+        Serial.println("\nWiFi failed to connect. Switching to AP mode.");
+        startWiFiAPMode();  // Start AP mode if WiFi fails
+    }
+}
+
 
 // Loop function
 // Add this variable to track if MQTT is in reconnecting state
 bool mqttReconnecting = false;
-
 void loop() {
     server.handleClient();
+    dnsServer.processNextRequest();  // Handle captive portal redirects
 
-    if (WiFi.status() == WL_CONNECTED) {
-        if (!wifiConnected) {
-            wifiConnected = true;
-            pushAllCommandSent = false;
-        }
-    } else {
-        wifiConnected = false;
+    // 🚀 Skip all WiFi/MQTT logic if in AP mode
+    if (isAPMode) return;
+
+    // Auto PushAll every 30 seconds
+    unsigned long currentMillis = millis();
+    if (autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= 30000)) {  
+        previousMillis = currentMillis;
+        if (debug) Serial.println("Requesting pushAll...");
+        publishPushAllMessage();
     }
 
-    if (client.connected()) {
-        if (!mqttConnected) {
-            mqttConnected = true;
-            sendPushAllCommand();
-            pushAllCommandSent = true;
-        }
-    } else {
-        if (mqttConnected) {
-            mqttConnected = false;
-        }
-
-        // Flash the yellow light when trying to reconnect
-        unsigned long currentMillis = millis();
-        if (currentMillis - yellowLightStartTime >= 500) {  // Flash every 500ms
-            yellowLightStartTime = currentMillis;
-            yellowLightState = !yellowLightState;  // Toggle the yellow light
-            digitalWrite(yellowLight, yellowLightState);
-        }
-    }
-
-    if (!client.connected() && (millis() - lastAttemptTime) > RECONNECT_INTERVAL) {
-        digitalWrite(yellowLight, HIGH);  // Keep the yellow light on while attempting to connect
-        connectToMqtt();
-    }
-
-    if (autoPushAllEnabled) {
-        unsigned long currentMillis = millis();
-        if (currentMillis - previousMillis >= 30000) {  
-            previousMillis = currentMillis;
-            if (client.connected()) {
-                if (debug) Serial.println("Requesting pushAll...");
-                publishPushAllMessage();
-            }
-        }
-    }
-
-    // Handle motor waiting state
+    // Motor waiting logic
     if (motorWaiting && millis() - motorWaitStartTime >= (motorWaitTime + additionalWaitTime)) {
         motorWaiting = false;
         motorRunning = true;
         motorRunStartTime = millis();
-        digitalWrite(yellowLight, LOW); // Turn off yellow light
-        digitalWrite(redLight, HIGH); // Turn on red light
+        digitalWrite(yellowLight, LOW);  // Turn off yellow light
+        digitalWrite(redLight, HIGH);    // Turn on red light
         if (debug) Serial.println("Moving Forward");
         digitalWrite(motor1Pin1, LOW);
         digitalWrite(motor1Pin2, HIGH);
         addLogEntry("Motor started");
     }
 
-    // Handle motor running state
+    // Motor running logic
     if (motorRunning && millis() - motorRunStartTime >= motorRunTime) {
         motorRunning = false;
         delayAfterRunning = true;
@@ -647,15 +683,14 @@ void loop() {
         addLogEntry("Motor stopped");
     }
 
-    // Handle delay after run state
+    // Delay after run logic
     if (delayAfterRunning && millis() - delayAfterRunStartTime >= delayAfterRun) {
         delayAfterRunning = false;
         if (debug) Serial.println("Delay after run complete");
         addLogEntry("Delay after run complete");
     }
 
-    // Handle yellow light flashing
-    unsigned long currentMillis = millis();
+    // Handle yellow light flashing based on MQTT/WiFi status
     if (motorWaiting) {
         digitalWrite(greenLight, LOW);
         if (currentMillis - yellowLightStartTime >= 500) {
@@ -664,7 +699,6 @@ void loop() {
             digitalWrite(yellowLight, yellowLightState);
         }
     } else if (!client.connected()) {
-        // Ensure yellow light continues flashing if MQTT is disconnected
         if (currentMillis - yellowLightStartTime >= 500) {
             yellowLightStartTime = currentMillis;
             yellowLightState = !yellowLightState;
@@ -674,5 +708,11 @@ void loop() {
         digitalWrite(yellowLight, LOW);
     }
 
+    // Ensure MQTT stays connected
+    if (!client.connected() && millis() - lastAttemptTime >= RECONNECT_INTERVAL) {
+        connectToMqtt();
+    }
+
+    // Keep MQTT active
     client.loop();
 }
