@@ -39,22 +39,49 @@ The Bambu Conveyor is an application designed to manage the waste output of a [B
 
 ## Flashing the ESP32
 
-To install the firmware, use an ESP32 flashing tool.
+To install the firmware, use one of the following methods:
 
-1. Download the latest `.bin` release from [GitHub Releases](#).
-2. Connect your ESP32 to your computer via USB.
-3. Use `ESP-Flasher` or `esptool.py` to flash the firmware.
+### **Method 1: Web Installer (Easiest Method)**
+- Open **Google Chrome** or **Microsoft Edge**.
+- Go to **[Bambu ESP32 Installer](https://t0nyz.com/flasher/index.html)**.
+- Click the **"Install"** button and follow the on-screen instructions.
+---
 
- **Note:** The port (`/dev/cu.usbserial-0001`) in the command below may be different on your system.  
- Use `ls /dev/cu.*` on macOS or `COMx` on Windows to find the correct port.
-   
-```cp
-esptool.py --chip esp32 --port /dev/cu.usbserial-0001 --baud 115200 write_flash 0x1000 Bambu-Poop-Conveyor-v1.3.0.bin
-```
+### **Method 2: Manual Installation**
 
-5. Wait for the flashing process to complete.
-6. Restart the ESP32.
+#### **1. Download and Install ESPTool**  
+   - Install `esptool` using pip:  
+     ```sh
+     pip install esptool
+     ```
+   - Alternatively, download the precompiled ESPTool from the official Espressif GitHub.
 
+#### **2. Download the Firmware File**  
+   - Download the latest firmware from the **[GitHub Releases](https://github.com/t0nyz0/Bambu-Poop-Conveyor-ESP32/releases/latest)**.  
+
+#### **3. Connect Your ESP32**  
+   - Plug your ESP32 into your computer using a USB cable.  
+   - Ensure drivers for the USB-to-serial adapter are installed (CH340, CP210x, etc.).  
+
+#### **4. Find the Serial Port**  
+   - On **macOS/Linux**, run:  
+     ```sh
+     ls /dev/tty.*
+     ```  
+     Look for something like `/dev/tty.usbserial-1`.  
+   - On **Windows**, open **Device Manager** and check under **Ports (COM & LPT)**.  
+
+#### **5. Flash the Firmware**  
+   - Replace `<PORT>` with your ESP32’s serial port (e.g., `/dev/tty.usbserial-1`):  
+     ```sh
+     esptool.py --chip esp32 --port /dev/tty.usbserial-1 --baud 460800 write_flash \
+       0x0 Bambu-Poop-Conveyor.v1.3.0-final.bin
+     ```  
+
+#### **6. Verify Flashing and Restart**  
+   - Once flashing completes, restart your ESP32 by unplugging/replugging it or pressing the **EN** or **RST** button.  
+
+Your ESP32 should now be running the updated firmware.
 
 ## Configuring via Web Interface
 
