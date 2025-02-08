@@ -46,7 +46,7 @@ To install the firmware, use one of the following methods:
 
 ### **Method 1: Web Installer (Easiest Method)**
 - Open **Google Chrome** or **Microsoft Edge**.
-- Go to **[Bambu ESP32 Installer](https://t0nyz.com/flasher/index.html)**.
+- Go to **[Bambu ESP32 Installer](https://t0nyz.com/flasher)**.
 - Click the **"Install"** button and follow the on-screen instructions.
 ---
 
