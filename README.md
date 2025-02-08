@@ -1,6 +1,9 @@
 # Bambu Poop Conveyor for ESP32 
 :arrow_right:	:arrow_right:	:poop: :arrow_right: :arrow_right: :poop: :arrow_right: :arrow_right:
 
+> [!TIP] 
+> Be sure to check out the new web installer. https://t0nyz.com/flasher/index.html
+
 ### For more detailed project information visit: https://t0nyz.com/projects/bambuconveyor
 
 ## Overview 
