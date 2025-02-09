@@ -2,7 +2,7 @@
 // Bambu Poop Conveyor
 // 8/6/24 - TZ
 // Last updated: 2/7/25
-char version[10] = "1.3.1";
+char version[10] = "1.3.2";
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -95,7 +95,7 @@ bool delayAfterRunning = false;
 
 DNSServer dnsServer;
 
-#define MAX_LOG_ENTRIES 100
+#define MAX_LOG_ENTRIES 200
 
 struct LogEntry {
     time_t timestamp;
@@ -268,7 +268,7 @@ void handleConfig() {
         html += "<option value=\"P1\"" + String((String(printer_model) == "P1") ? " selected" : "") + ">P1</option>";
         html += "<option value=\"A1\"" + String((String(printer_model) == "A1") ? " selected" : "") + ">A1</option>";
         html += "</select><br>";
-        html += "<label for=\"debug\">Serial Monitor Debug:</label>";
+        html += "<label for=\"debug\"> Debug Mode (Reduced performance):</label>";
         html += "<input type=\"checkbox\" id=\"debug\" name=\"debug\" " + String(debug ? "checked" : "") + "><br>";
         html += "<input type=\"submit\" value=\"Save\">";
         html += "</form>";
@@ -328,13 +328,13 @@ String formatDateTime(time_t timestamp) {
 }
 
 void handleLogs() {
-    String html = "<html><head><title>Run Logs</title>";
+    String html = "<html><head><title>Debug Logs</title>";
     html += "<style>";
     html += "body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; text-align: center; }";
-    html += ".container { max-width: 800px; margin: 50px auto; padding: 20px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); border-radius: 8px; }";
+    html += ".container { max-width: 1000px; margin: 30px auto; padding: 20px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); border-radius: 8px; }";
     html += "h1 { color: #333; }";
     html += "table { width: 100%; border-collapse: collapse; margin-top: 20px; }";
-    html += "th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }";
+    html += "th, td { padding: 5px; border: 1px solid #ddd; text-align: left; }";
     html += "th { background-color: #f2f2f2; }";
     html += "</style>";
     html += "</head><body>";
@@ -381,6 +381,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         (printer_stage == 4 || printer_stage == 14 || (printer_sub_stage == 4 && printer_stage != -1))) {
         motorWaiting = true;
         motorWaitStartTime = millis();
+         if (debug) {
+            addLogEntry("Status 4 or 14 detected! Running conveyor!!!");
+            Serial.println("Status 4 or 14 detected! Running conveyor!!!");
+        }
 
         // Adjust additional wait time based on printer stage
         if (printer_sub_stage == 4 && printer_stage != -1) {
@@ -396,53 +400,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     }
 
     if (debug) {
-        Serial.println("--------------------------------------------------------");
-        Serial.print("Bambu Poop Conveyor v");
-        Serial.print(version);
-        Serial.print(" | Wifi: ");
-        Serial.println(WiFi.localIP());
-        Serial.print("Current Print Stage: ");
-        Serial.print(getStageInfo(printer_stage));
-        Serial.print(" | Sub stage: ");
-        Serial.println(getStageInfo(printer_sub_stage));
-        addLogEntry("MQTT Callback - Getting data from printer.");
-        addLogEntry("Current print stage:");
-        addLogEntry(getStageInfo(printer_stage));
-        addLogEntry("Current sub print stage:");
-        addLogEntry(getStageInfo(printer_sub_stage));
+        Serial.println("Bambu Poop Conveyor v" + String(version) + 
+               " | Wifi: " + WiFi.localIP().toString() + 
+               " | Current Print Stage: " + String(getStageInfo(printer_stage)) + 
+               " | Sub stage: " + String(getStageInfo(printer_sub_stage)));
+        addLogEntry("MQTT Callback - Getting data from printer. Data: Current print stage: " + String(getStageInfo(printer_stage)) + " | Current sub print stage: " + String(getStageInfo(printer_sub_stage)));
     }
 }
 
-// Function to connect to MQTT
-void connectToMqtt() {
-    if (!client.connected()) {
-        if (debug) Serial.print("Connecting to MQTT...");
-        if (client.connect("BambuConveyor", mqtt_user, mqtt_password)) {
-            if (debug) {
-                Serial.println("Connected to Bambu X1");
-                addLogEntry("Connected to Bambu X1");
-            }
-            sprintf(mqtt_topic, "device/%s/report", serial_number);
-            client.subscribe(mqtt_topic);
-            publishPushAllMessage();
-            digitalWrite(redLight, LOW);
-        } else {
-            if (debug) {
-                Serial.print("Failed: ");
-                Serial.print(client.state());
-                Serial.println(" try again in 5 seconds");
-                addLogEntry("Failed to connect to MQTT (Bambu Printer), trying again in 5 seconds");
-            }
-            lastAttemptTime = millis();
-        }
-    }
-    else
-    {
-      digitalWrite(redLight, HIGH);
-    }
-}
-
-// Function to publish a push all message
 void publishPushAllMessage() {
     if (client.connected()) {
         char publish_topic[128];
@@ -456,49 +421,58 @@ void publishPushAllMessage() {
         String jsonMessage;
         serializeJson(doc, jsonMessage);
 
-        if (debug) {
-            Serial.println("JSON message to send: " + jsonMessage);
-        }
-
         bool success = client.publish(publish_topic, jsonMessage.c_str());
 
         if (success) {
             if (debug) {
                 Serial.print("Message successfully sent to: ");
                 Serial.println(publish_topic);
-                addLogEntry("MQTT message sent");
+                addLogEntry("MQTT message sent from publishPushAllMessage");
             }
         } else {
             if (debug) Serial.println("Failed to send message.");
-            addLogEntry("Failed to send MQTT push all");
+            addLogEntry("Failed to send MQTT push all - publishPushAllMessage");
         }
 
         sequence_id++;
     } else {
-        if (debug) Serial.println("Not connected to MQTT broker!");
+        if (debug) { 
+            Serial.println("Not connected to MQTT broker!");
+            addLogEntry("Not connected to MQTT broker! - publishPushAllMessage");
+        }
     }
 }
 
-// Function to publish a JSON message
-void publishJsonMessage(const char* jsonString) {
-    if (client.connected()) {
-        char publish_topic[128];
-        sprintf(publish_topic, "device/%s/request", serial_number);
 
-        if (client.publish(publish_topic, jsonString)) {
-            if (debug) {
-                Serial.print("Message successfully sent to: ");
-                Serial.println(publish_topic);
-                addLogEntry("MQTT message sent");
-            }
-        } else {
-            if (debug) Serial.println("Error sending the message.");
-            addLogEntry("Failed to send MQTT push all");
+// Function to connect to MQTT
+void connectToMqtt() {
+    if (!client.connected()) {
+        if (debug) {
+            Serial.print("Connecting to MQTT...");
+            addLogEntry("Connecting to MQTT...");
         }
-
-        sequence_id++;
-    } else {
-        if (debug) Serial.println("Not connected to MQTT broker!");
+        if (client.connect("BambuConveyor", mqtt_user, mqtt_password)) {
+            Serial.println("Connected to Bambu printer");
+            addLogEntry("Connected to Bambu printer");
+            sprintf(mqtt_topic, "device/%s/report", serial_number);
+            client.subscribe(mqtt_topic);
+            publishPushAllMessage();
+            digitalWrite(redLight, LOW);
+            if (debug) {
+                Serial.print("Red light off");
+                addLogEntry("Red light off");
+            }
+        } else {  
+            if (debug) {
+                Serial.print("Failed: ");
+                Serial.print(client.state());
+                Serial.println(" try again in 5 seconds");
+                addLogEntry("Failed to connect to MQTT (Bambu Printer), trying again in 5 seconds");
+            }
+            lastAttemptTime = millis();
+            digitalWrite(redLight, HIGH);
+            addLogEntry("RED light turned on");
+        }
     }
 }
 
@@ -581,6 +555,7 @@ void setup() {
 
     // Set up MQTT if WiFi is connected
     if (WiFi.status() == WL_CONNECTED) {
+        addLogEntry("Wifi connected: " + WiFi.localIP().toString());
         client.setServer(mqtt_server, 8883); // Default MQTT port
         espClient.setInsecure();
         client.setCallback(mqttCallback);
@@ -602,9 +577,10 @@ void setup() {
 
     // Start Web Server
     server.begin();
-    if (debug) Serial.println("Web server started.");
+    Serial.println("Web server started.");
+    addLogEntry("Web server started.");
 
-    if (client.connected() && strcmp(printer_model, "X1") == 0) {
+    if (!client.connected()) {
         sendPushAllCommand();
     }
 }
@@ -664,21 +640,26 @@ void connectToWiFi() {
 
 // Loop function
 // Add this variable to track if MQTT is in reconnecting state
+unsigned long lastMQTTDisconnectTime = 0;
 bool mqttReconnecting = false;
 void loop() {
     server.handleClient();
     dnsServer.processNextRequest();  // Handle captive portal redirects
 
-    // 🚀 Skip all WiFi/MQTT logic if in AP mode
-    if (isAPMode) return;
+    if (isAPMode) return;  // Skip all WiFi/MQTT logic if in AP mode
 
-    // Auto PushAll every 30 seconds
     unsigned long currentMillis = millis();
-    if (autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= 30000)) {  
+    static unsigned long disconnectedTime = 0; 
+
+    // Determine push interval based on printer model
+    unsigned long pushInterval = (strcmp(printer_model, "X1") == 0) ? 30000 : 300000; // 30 sec for X1, 5 min for others
+
+    // Auto PushAll based on printer model interval
+    if (autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= pushInterval)) {  
         previousMillis = currentMillis;
         if (debug) { 
             Serial.println("Requesting pushAll...");
-            addLogEntry("Requesting pushAll...");
+            addLogEntry("Requesting pushAll... Push interval: " + String(pushInterval) + " Push interval: " + String(currentMillis - previousMillis));
         }
         publishPushAllMessage();
     }
@@ -688,12 +669,12 @@ void loop() {
         motorWaiting = false;
         motorRunning = true;
         motorRunStartTime = millis();
-        digitalWrite(yellowLight, LOW);  // Turn off yellow light
-        digitalWrite(redLight, HIGH);    // Turn on red light
+        digitalWrite(yellowLight, LOW);  
+        digitalWrite(redLight, HIGH);    
         if (debug) Serial.println("Moving Forward");
         digitalWrite(motor1Pin1, LOW);
         digitalWrite(motor1Pin2, HIGH);
-        addLogEntry("Motor started");
+        addLogEntry("Conveyor Running | MOTOR STARTED");
     }
 
     // Motor running logic
@@ -724,21 +705,34 @@ void loop() {
             yellowLightState = !yellowLightState;
             digitalWrite(yellowLight, yellowLightState);
         }
-    } else if (!client.connected()) {
+    } 
+    
+   if (!client.connected()) {
+    
+    if (disconnectedTime == 0) {
+        disconnectedTime = millis();  // Mark the time of disconnection
+    }
+
+    if (millis() - disconnectedTime >= 5000) {  // Flash only if disconnected for 5+ seconds
         if (currentMillis - yellowLightStartTime >= 500) {
             yellowLightStartTime = currentMillis;
             yellowLightState = !yellowLightState;
             digitalWrite(yellowLight, yellowLightState);
+            if (debug){
+                addLogEntry("MQTT disconnect detected, yellow light flashing due to 5s disconnection.");
+            }
         }
-    } else {
-        digitalWrite(yellowLight, LOW);
     }
 
-    // Ensure MQTT stays connected
-    if (!client.connected() && millis() - lastAttemptTime >= RECONNECT_INTERVAL) {
+    if (millis() - lastAttemptTime >= RECONNECT_INTERVAL) {
         connectToMqtt();
+        lastAttemptTime = millis(); 
     }
+} else {  
+    // Reset when MQTT is reconnected
+    digitalWrite(yellowLight, LOW);  
+    disconnectedTime = 0;  
+}
 
-    // Keep MQTT active
     client.loop();
 }
