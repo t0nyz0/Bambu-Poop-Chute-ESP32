@@ -2,7 +2,7 @@
 // Bambu Poop Conveyor
 // 8/6/24 - TZ
 // Last updated: 2/7/25
-char version[10] = "1.3.0";
+char version[10] = "1.3.1";
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -362,6 +362,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         if (debug) {
             Serial.print(F("deserializeJson() failed: "));
             Serial.println(error.c_str());
+            addLogEntry("deserializeJson() failed: ");
+            addLogEntry(error.c_str());
         }
         return;
     }
@@ -403,6 +405,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         Serial.print(getStageInfo(printer_stage));
         Serial.print(" | Sub stage: ");
         Serial.println(getStageInfo(printer_sub_stage));
+        addLogEntry("MQTT Callback - Getting data from printer.");
+        addLogEntry("Current print stage:");
+        addLogEntry(getStageInfo(printer_stage));
+        addLogEntry("Current sub print stage:");
+        addLogEntry(getStageInfo(printer_sub_stage));
     }
 }
 
@@ -411,7 +418,10 @@ void connectToMqtt() {
     if (!client.connected()) {
         if (debug) Serial.print("Connecting to MQTT...");
         if (client.connect("BambuConveyor", mqtt_user, mqtt_password)) {
-            if (debug) Serial.println("Connected to Bambu X1");
+            if (debug) {
+                Serial.println("Connected to Bambu X1");
+                addLogEntry("Connected to Bambu X1");
+            }
             sprintf(mqtt_topic, "device/%s/report", serial_number);
             client.subscribe(mqtt_topic);
             publishPushAllMessage();
@@ -421,6 +431,7 @@ void connectToMqtt() {
                 Serial.print("Failed: ");
                 Serial.print(client.state());
                 Serial.println(" try again in 5 seconds");
+                addLogEntry("Failed to connect to MQTT (Bambu Printer), trying again in 5 seconds");
             }
             lastAttemptTime = millis();
         }
@@ -455,9 +466,11 @@ void publishPushAllMessage() {
             if (debug) {
                 Serial.print("Message successfully sent to: ");
                 Serial.println(publish_topic);
+                addLogEntry("MQTT message sent");
             }
         } else {
             if (debug) Serial.println("Failed to send message.");
+            addLogEntry("Failed to send MQTT push all");
         }
 
         sequence_id++;
@@ -476,9 +489,11 @@ void publishJsonMessage(const char* jsonString) {
             if (debug) {
                 Serial.print("Message successfully sent to: ");
                 Serial.println(publish_topic);
+                addLogEntry("MQTT message sent");
             }
         } else {
             if (debug) Serial.println("Error sending the message.");
+            addLogEntry("Failed to send MQTT push all");
         }
 
         sequence_id++;
@@ -501,7 +516,10 @@ void sendPushAllCommand() {
 
         String payload;
         serializeJson(doc, payload);
-        if (debug) Serial.println("MQTT Callback sent - Sendpushallcommand");
+        if (debug) {
+                Serial.println("MQTT Callback sent - Sendpushallcommand");
+                addLogEntry("MQTT Callback sent - Sendpushallcommand");
+        }
         client.publish(mqtt_topic_request.c_str(), payload.c_str());
         pushAllCommandSent = true;
     }
@@ -598,6 +616,7 @@ void handleRoot() {
 
 void startWiFiAPMode() {
     Serial.println("Starting WiFi AP Mode...");
+    addLogEntry("Starting WiFi AP Mode...");
 
     isAPMode = true;  
 
@@ -624,7 +643,10 @@ void connectToWiFi() {
         delay(500);
         digitalWrite(yellowLight, LOW);
         delay(500);
-        if (debug) Serial.print('.');
+        if (debug) { 
+            Serial.print('.');
+            addLogEntry("Connecting to wifi....");
+        }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
@@ -635,6 +657,7 @@ void connectToWiFi() {
     } else {
         Serial.println("\nWiFi failed to connect. Switching to AP mode.");
         startWiFiAPMode();  // Start AP mode if WiFi fails
+        addLogEntry("WiFi failed to connect. Switching to AP mode.");
     }
 }
 
@@ -653,7 +676,10 @@ void loop() {
     unsigned long currentMillis = millis();
     if (autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= 30000)) {  
         previousMillis = currentMillis;
-        if (debug) Serial.println("Requesting pushAll...");
+        if (debug) { 
+            Serial.println("Requesting pushAll...");
+            addLogEntry("Requesting pushAll...");
+        }
         publishPushAllMessage();
     }
 
