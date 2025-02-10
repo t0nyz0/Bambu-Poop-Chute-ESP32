@@ -2,24 +2,29 @@
 :arrow_right:	:arrow_right:	:poop: :arrow_right: :arrow_right: :poop: :arrow_right: :arrow_right:
 
 > [!TIP] 
-> Be sure to check out the new web installer. https://t0nyz.com/flasher
+> Be sure to check out the new web installer. https://t0nyz.com/flasher/index.html
 
 ### For more detailed project information visit: https://t0nyz.com/projects/bambuconveyor
 
 ## Overview 
 
-The Bambu Conveyor is an application designed to manage the waste output of a [Bambu Labs printer](https://bambulab.com/en/x1). It utilizes the MQTT protocol to monitor the printer's status and control a motor that moves waste material away from the printing area. Supports X1, currently testing A1 and P1 compatibility. See settings menu.
+The Bambu Conveyor is an application designed to manage the waste output of a [Bambu Labs printer](https://bambulab.com/en/x1). It utilizes the MQTT protocol (or Motion Detection) to monitor the printer's status and control a motor that moves waste material away from the printing area. 
 
+## Required parts used for this build:
 
-## List of some supplies
 - Breakout board for ESP32: https://amzn.to/4dyjsx0
 - ESP32 board: https://amzn.to/4fBjh5L
 - 12 Volt power supply: https://amzn.to/3AfIm6a
 - Motor Controller: https://amzn.to/3yBPqcM
 - 12V 10RPM Motor: https://amzn.to/3M24VOd
-- Resistors (I use 1k Ohm): https://amzn.to/4cqCi8e
-- Wires: https://amzn.to/46EAtn3
-- LEDs sourced from this kit: https://amzn.to/4dH5Dw7
+- Resistors (I use 470Ω - you need 3 from this kit): https://amzn.to/4cqCi8e
+- Wires: https://amzn.to/46EAtn3 
+- LED's sourced from this kit: https://amzn.to/4dH5Dw7
+
+## Optional parts:
+- Power connector: https://amzn.to/3T4xRsS
+- I use these bearings on my conveyor for smoother action: https://amzn.to/4hjW0WD
+- Motion sensor (For Motion Sensor mode): https://amzn.to/4gtN4gd
   
 
 # Conveyor Makerworld files
@@ -29,12 +34,20 @@ The Bambu Conveyor is an application designed to manage the waste output of a [B
 - **Conveyor Extension:** https://makerworld.com/en/models/249714#profileId-359905
 
 
-## Features
+### Two Modes of Operation: MQTT or Motion Detection
 
-- **WiFi and MQTT Connectivity:** Connects to a local WiFi network and communicates with the printer via MQTT
-- **Motor Control:** Activates a motor to manage the printer's waste output based on the printer's status
-- **Web Server:** Hosts a web server to provide manual control and configuration of the system
-- **Stage Monitoring:** Monitors various stages of the printer to determine when to activate the motor
+The **Bambu Poop Conveyor** supports two methods for triggering the conveyor, depending on your printer model and preference.
+
+#### 1. MQTT Mode (Recommended for X1C) (Default setting)
+- Best suited for **X1C printers** due to their more powerful CPU, which handles MQTT updates more efficiently.
+- Listens for printer status changes (Change Filament status and Clean nozzle status) and automatically activates the conveyor when needed.
+- Requires a stable network connection and correct MQTT setup.
+
+#### 2. IR Motion Detection Mode (Better for P1 & A1 Series)
+- Ideal for **P1 and A1 series printers**, where MQTT performance can be inconsistent due to CPU constraints.
+- Uses the **HiLetgo AM312 PIR sensor** to detect movement and trigger the conveyor.
+- Works independently of network conditions, making it a more reliable option for some setups.
+
 
 # Bambu Poop Conveyor - Setup & Installation Guide  
 
@@ -78,7 +91,7 @@ To install the firmware, use one of the following methods:
    - Replace `<PORT>` with your ESP32’s serial port (e.g., `/dev/tty.usbserial-1`):  
      ```sh
      esptool.py --chip esp32 --port /dev/tty.usbserial-1 --baud 460800 write_flash \
-       0x0 Bambu-Poop-Conveyor.v1.3.0-final.bin
+       0x0 Bambu-Poop-Conveyor.v1.3.3-final.bin
      ```  
 
 #### **6. Verify Flashing and Restart**  
@@ -97,6 +110,21 @@ Once flashed, the ESP32 starts in AP Mode:
 
 For troubleshooting, open an issue on GitHub or check the discussions tab.
 
+## GPIO Pins
+
+The application uses the following GPIO pins for motor and LED control:
+
+```js copy
+const int greenLight = 19;
+const int yellowLight = 18;
+const int redLight = 4;
+
+int motor1Pin1 = 23;
+int motor1Pin2 = 21;
+int enable1Pin = 15;
+
+const int motionSensorPin = 22; 
+```
 
 ## Usage
 
