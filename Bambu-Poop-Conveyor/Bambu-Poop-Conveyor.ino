@@ -2,7 +2,7 @@
 // Bambu Poop Conveyor
 // 8/6/24 - TZ
 // Last updated: 2/7/25
-char version[10] = "1.3.2";
+char version[10] = "1.3.3";
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -44,6 +44,9 @@ const int daylightOffset_sec = 3600; // Adjust for daylight saving time if appli
 const int greenLight = 19;
 const int yellowLight = 18;
 const int redLight = 4;
+
+const int motionSensorPin = 22;  // Adjust the pin as needed
+bool useMotionSensor = false;
 
 char mqtt_port[6] = "8883";
 char mqtt_user[30] = "bblp";
@@ -92,6 +95,7 @@ unsigned int yellowLightState = 0;
 bool motorRunning = false;
 bool motorWaiting = false;
 bool delayAfterRunning = false;
+
 
 DNSServer dnsServer;
 
@@ -262,6 +266,8 @@ void handleConfig() {
         html += "<label for=\"motorRunTime\">Motor Run Time (ms):</label><input type=\"number\" id=\"motorRunTime\" name=\"motorRunTime\" value=\"" + String(motorRunTime) + "\"><br>";
         html += "<label for=\"motorWaitTime\">Motor Wait Time (ms):</label><input type=\"number\" id=\"motorWaitTime\" name=\"motorWaitTime\" value=\"" + String(motorWaitTime) + "\"><br>";
         html += "<label for=\"delayAfterRun\">Delay After Run (ms):</label><input type=\"number\" id=\"delayAfterRun\" name=\"delayAfterRun\" value=\"" + String(delayAfterRun) + "\"><br>";
+        html += "<label for=\"useMotionSensor\"> Use Motion Sensor (Disables MQTT detection):</label>";
+        html += "<input type=\"checkbox\" id=\"useMotionSensor\" name=\"useMotionSensor\" " + String(useMotionSensor ? "checked" : "") + "><br>";
         html += "<label for=\"printer_model\">Printer Model:</label>";
         html += "<select id=\"printer_model\" name=\"printer_model\">";
         html += "<option value=\"X1\"" + String((String(printer_model) == "X1") ? " selected" : "") + ">X1</option>";
@@ -293,6 +299,7 @@ void handleConfig() {
         motorRunTime = server.arg("motorRunTime").toInt();
         motorWaitTime = server.arg("motorWaitTime").toInt();
         delayAfterRun = server.arg("delayAfterRun").toInt();
+        useMotionSensor = server.hasArg("useMotionSensor");
         debug = server.hasArg("debug");
 
         // Store in Preferences for persistence
@@ -304,6 +311,7 @@ void handleConfig() {
         preferences.putInt("motorRunTime", motorRunTime);
         preferences.putInt("motorWaitTime", motorWaitTime);
         preferences.putInt("delayAfterRun", delayAfterRun);
+        preferences.putBool("useMotionSensor", useMotionSensor);
         preferences.putString("printer_model", printer_model);
         preferences.putBool("debug", debug);
 
@@ -376,30 +384,29 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         printer_sub_stage = doc["print"]["mc_print_sub_stage"].as<int>();
     }
 
-    // Only set motorWaiting if it's not already waiting, running, or in delay after running state
-    if (!motorWaiting && !motorRunning && !delayAfterRunning && 
+
+    if (!useMotionSensor && !motorWaiting && !motorRunning && !delayAfterRunning && 
         (printer_stage == 4 || printer_stage == 14 || (printer_sub_stage == 4 && printer_stage != -1))) {
         motorWaiting = true;
         motorWaitStartTime = millis();
-         if (debug) {
-            addLogEntry("Status 4 or 14 detected! Running conveyor!!!");
+        addLogEntry("Status 4 or 14 detected! Running conveyor!!!");
+
+        if (debug) {
             Serial.println("Status 4 or 14 detected! Running conveyor!!!");
         }
 
-        // Adjust additional wait time based on printer stage
         if (printer_sub_stage == 4 && printer_stage != -1) {
-            additionalWaitTime = 75000; // Additional seconds for changing filament, after testing this seems to be about right, each persons settings will vary though.
+            additionalWaitTime = 75000;
         } else {
-            additionalWaitTime = 0; // No additional wait time for other stages
+            additionalWaitTime = 0;
         }
 
-        yellowLightStartTime = millis(); // Start yellow light flashing immediately
-        yellowLightState = HIGH; // Ensure the yellow light starts as HIGH
-        digitalWrite(yellowLight, yellowLightState); // Turn on yellow light immediately
-        addLogEntry("Motor wait started due to printer stage");
+        yellowLightStartTime = millis();
+        yellowLightState = HIGH;
+        digitalWrite(yellowLight, yellowLightState);
     }
 
-    if (debug) {
+    if (debug && !useMotionSensor) {
         Serial.println("Bambu Poop Conveyor v" + String(version) + 
                " | Wifi: " + WiFi.localIP().toString() + 
                " | Current Print Stage: " + String(getStageInfo(printer_stage)) + 
@@ -507,6 +514,7 @@ void setup() {
     pinMode(yellowLight, OUTPUT);
     pinMode(redLight, OUTPUT);
     pinMode(greenLight, OUTPUT);
+    pinMode(motionSensorPin, INPUT);
 
     // Start Serial communication
     Serial.begin(115200);
@@ -525,6 +533,7 @@ void setup() {
     String storedMqttServer = preferences.getString("mqtt_server", "");
     String storedMqttPassword = preferences.getString("mqtt_password", "");
     String storedSerialNumber = preferences.getString("serial_number", "");
+    useMotionSensor = preferences.getBool("useMotionSensor", false);
     String storedPrinterModel = preferences.getString("printer_model", "X1");  // Default "X1" if missing
     debug = preferences.getBool("debug", false); 
 
@@ -654,8 +663,17 @@ void loop() {
     // Determine push interval based on printer model
     unsigned long pushInterval = (strcmp(printer_model, "X1") == 0) ? 30000 : 300000; // 30 sec for X1, 5 min for others
 
+    if (useMotionSensor && digitalRead(motionSensorPin) == HIGH && !motorWaiting && !motorRunning && !delayAfterRunning) {
+        motorWaiting = true;
+        motorWaitStartTime = millis();
+        yellowLightStartTime = millis();
+        yellowLightState = HIGH;
+        digitalWrite(yellowLight, yellowLightState);
+        addLogEntry("Motion detected, starting conveyor");
+    }
+
     // Auto PushAll based on printer model interval
-    if (autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= pushInterval)) {  
+    if (!useMotionSensor && autoPushAllEnabled && client.connected() && (currentMillis - previousMillis >= pushInterval)) {  
         previousMillis = currentMillis;
         if (debug) { 
             Serial.println("Requesting pushAll...");
@@ -707,31 +725,33 @@ void loop() {
         }
     } 
     
-   if (!client.connected()) {
+   if (!useMotionSensor && !client.connected()) {
     
-    if (disconnectedTime == 0) {
-        disconnectedTime = millis();  // Mark the time of disconnection
-    }
+        if (disconnectedTime == 0) {
+            disconnectedTime = millis();  // Mark the time of disconnection
+        }
 
-    if (millis() - disconnectedTime >= 5000) {  // Flash only if disconnected for 5+ seconds
-        if (currentMillis - yellowLightStartTime >= 500) {
-            yellowLightStartTime = currentMillis;
-            yellowLightState = !yellowLightState;
-            digitalWrite(yellowLight, yellowLightState);
-            if (debug){
-                addLogEntry("MQTT disconnect detected, yellow light flashing due to 5s disconnection.");
+        if (millis() - disconnectedTime >= 5000) {  // Flash only if disconnected for 5+ seconds
+            if (currentMillis - yellowLightStartTime >= 500) {
+                yellowLightStartTime = currentMillis;
+                yellowLightState = !yellowLightState;
+                digitalWrite(yellowLight, yellowLightState);
+                if (debug){
+                    addLogEntry("MQTT disconnect detected, yellow light flashing due to 5s disconnection.");
+                }
             }
         }
-    }
 
-    if (millis() - lastAttemptTime >= RECONNECT_INTERVAL) {
-        connectToMqtt();
-        lastAttemptTime = millis(); 
-    }
-} else {  
-    // Reset when MQTT is reconnected
-    digitalWrite(yellowLight, LOW);  
-    disconnectedTime = 0;  
+        if (millis() - lastAttemptTime >= RECONNECT_INTERVAL) {
+            connectToMqtt();
+            lastAttemptTime = millis(); 
+        }
+    } else {  
+        // Reset when MQTT is reconnected
+        if (!useMotionSensor) {
+            digitalWrite(yellowLight, LOW);  
+            disconnectedTime = 0;  
+        }
 }
 
     client.loop();
