@@ -2,7 +2,7 @@
 // Bambu Poop Conveyor
 // 8/6/24 - TZ
 // Last updated: 2/7/25
-char version[10] = "1.3.3";
+char version[10] = "1.3.4";
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -465,9 +465,12 @@ void connectToMqtt() {
             client.subscribe(mqtt_topic);
             publishPushAllMessage();
             digitalWrite(redLight, LOW);
+            digitalWrite(yellowLight, LOW);  
             if (debug) {
                 Serial.print("Red light off");
                 addLogEntry("Red light off");
+                Serial.print("Yellow light off");
+                addLogEntry("Yellow light off");
             }
         } else {  
             if (debug) {
@@ -664,12 +667,12 @@ void loop() {
     unsigned long pushInterval = (strcmp(printer_model, "X1") == 0) ? 30000 : 300000; // 30 sec for X1, 5 min for others
 
     if (useMotionSensor && digitalRead(motionSensorPin) == HIGH && !motorWaiting && !motorRunning && !delayAfterRunning) {
-        motorWaiting = true;
         motorWaitStartTime = millis();
         yellowLightStartTime = millis();
         yellowLightState = HIGH;
         digitalWrite(yellowLight, yellowLightState);
         addLogEntry("Motion detected, starting conveyor");
+        motorWaiting = true;
     }
 
     // Auto PushAll based on printer model interval
@@ -704,6 +707,7 @@ void loop() {
         digitalWrite(motor1Pin1, LOW);
         digitalWrite(motor1Pin2, LOW);
         digitalWrite(redLight, LOW);
+        digitalWrite(yellowLight, LOW);
         digitalWrite(greenLight, HIGH);
         addLogEntry("Motor stopped");
     }
@@ -746,13 +750,7 @@ void loop() {
             connectToMqtt();
             lastAttemptTime = millis(); 
         }
-    } else {  
-        // Reset when MQTT is reconnected
-        if (!useMotionSensor) {
-            digitalWrite(yellowLight, LOW);  
-            disconnectedTime = 0;  
-        }
-}
+    } 
 
     client.loop();
 }
